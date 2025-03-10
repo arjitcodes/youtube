@@ -10,6 +10,7 @@ export interface Video {
   thumbnailPath?: string
   subtitlePath?: string
   subtitleList: Subtitle[]
+  chapterPath?:string
   duration: string
 }
 

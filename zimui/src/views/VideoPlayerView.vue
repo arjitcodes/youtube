@@ -96,6 +96,27 @@ const subtitles = computed(() => {
   })
 })
 
+const chapters = computed(() => {
+  if(!video.value?.chapterPath){
+    return []
+  }
+ return [{
+    kind: 'chapters',
+    src: `${video.value?.chapterPath}/chapters.vtt`,
+    srclang: 'en',
+    label: 'Chapters',
+    default: true
+  }]
+});
+
+const tracks=computed(()=>{
+  return [
+    ...subtitles.value,
+    ...chapters.value
+  ]
+})
+
+
 const videoOptions = ref({
   controls: true,
   autoplay: true,
@@ -118,7 +139,7 @@ const videoOptions = ref({
       type: videoFormat
     }
   ],
-  tracks: subtitles
+  tracks: tracks
 })
 
 const currentVideoIndex = computed(() => {

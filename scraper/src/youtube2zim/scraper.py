@@ -761,6 +761,7 @@ class Youtube2Zim:
         options_copy = options.copy()
         video_location = options_copy["y2z_videos_dir"].joinpath(video_id)
         thumbnail_path = video_location.joinpath("video.webp")
+        #need
         zim_path = f"videos/{video_id}/video.webp"
 
         s3_key = None
@@ -805,6 +806,53 @@ class Youtube2Zim:
                 self.upload_to_cache(s3_key, thumbnail_path, preset.VERSION)
             return True
 
+    def add_chapters_to_zim(self, video_id: str):
+        """add chapters file to zim file"""
+
+        chapters_file = self.videos_dir.joinpath(video_id, "chapters.vtt")
+        if chapters_file.exists():
+                self.add_file_to_zim(
+                    f"videos/{video_id}/{chapters_file.name}",
+                    chapters_file,
+                    callback=(delete_callback, chapters_file),
+                )
+
+    def download_chapters(self, video_id, options):
+        """download chapters for a video"""
+        
+        options_copy=options.copy()
+
+        try:
+            with yt_dlp.YoutubeDL(options_copy) as ydl:
+                info=ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}",download=False)
+                
+                chapters=info.get("chapters",[])
+                
+                if not chapters:
+                    logger.warning(f"No chapters found for {video_id}")
+                    return
+                
+                logger.info(f"Found {len(chapters)} chapters for {video_id}")
+                
+                chapters_file = self.videos_dir.joinpath(video_id, "chapters.vtt")
+
+                with chapters_file.open("w",encoding="utf8") as f:
+                    f.write("WEBVTT\n\n")
+                    for chapter in chapters:
+                        start=chapter["start_time"]
+                        end=chapter["end_time"]
+                        title=chapter["title"]
+
+                        start_time=f"{int(start//3600):02}:{int((start%3600)//60):02}:{int(start%60):02}.{int((start%1)*1000):03}"
+                        end_time=f"{int(end//3600):02}:{int((end%3600)//60):02}:{int(end%60):02}.{int((end%1)*1000):03}"
+                        
+                        f.write(f"{start_time} --> {end_time}\n")
+                        f.write(f"{title}\n\n")
+                logger.info(f"Chapters file saved to for {video_id}")
+                self.add_chapters_to_zim(video_id)
+        except:
+            logger.error(f"Could not download chapters for {video_id}") 
+        
     def fetch_video_subtitles_list(self, video_id: str) -> Subtitles:
         """fetch list of subtitles for a video"""
 
@@ -812,7 +860,7 @@ class Youtube2Zim:
         languages = [
             x.stem.split(".")[1]
             for x in video_dir.iterdir()
-            if x.is_file() and x.name.endswith(".vtt")
+            if x.is_file() and x.name.endswith(".vtt") and x.name!="chapters.vtt"
         ]
 
         def to_subtitle_object(lang) -> Subtitle:
@@ -883,6 +931,7 @@ class Youtube2Zim:
                 video_id, options
             ):
                 self.download_subtitles(video_id, options)
+                self.download_chapters(video_id,options)
                 succeeded.append(video_id)
             else:
                 failed.append(video_id)
@@ -1009,6 +1058,13 @@ class Youtube2Zim:
             if subtitles_list is None:
                 return []
             return subtitles_list["subtitles"]
+        
+        def has_chapters_file(self,video_id:str):
+            chapters_file = self.videos_dir.joinpath(video_id, "chapters.vtt")
+            if chapters_file.exists():
+                return True
+            else:
+                return False
 
         def get_videos_list(playlist):
             videos = load_mandatory_json(
@@ -1043,6 +1099,7 @@ class Youtube2Zim:
                 thumbnail_path=get_thumbnail_path(video_id),
                 subtitle_path=f"videos/{video_id}" if len(subtitles_list) > 0 else None,
                 subtitle_list=subtitles_list,
+                chapters_path=f"videos/{video_id}" if has_chapters_file(self,video_id) is True else None,
                 duration=videos_channels[video_id]["duration"],
             )
 
