@@ -28,7 +28,7 @@ const videoContainer = ref<HTMLVideoElement>()
 const player = ref<Player>()
 const chapterList = ref<{ startTime: number; endTime: number; title: string }[]>([])
 
-const emit = defineEmits(['video-ended'])
+const emit = defineEmits(['video-ended', 'next-video', 'prev-video'])
 
 const addMarkers = () => {
   if (player.value) {
@@ -64,6 +64,422 @@ const getChapterAtTime = (timestr: string) => {
   }
 
   return null
+}
+
+const updateChapterTimeTooltip = () => {
+  if (player.value) {
+    const timeTooltip = player.value
+      ?.getChild('controlBar')
+      ?.getChild('progressControl')
+      ?.getChild('seekBar')
+      ?.getChild('mouseTimeDisplay')
+      ?.getChild('timeTooltip') as TimeTooltip
+
+    if (!timeTooltip) return
+
+    timeTooltip.update = function (seekBarRect: DOMRect, seekBarPoint: number, time: string) {
+      const chapter = getChapterAtTime(time)
+      if (chapter) {
+        this.write(`${chapter.replace(/ /g, '\u00A0')}\n${time}`)
+        return
+      }
+      this.write(`${time}`)
+    }
+  }
+}
+
+const appendSkipIndicator = () => {
+  if (!player.value) return
+  const videoElement = player.value.el()
+
+  if (!videoElement) return
+
+  const forwardSkipEl = document.createElement('div')
+  const backwardSkipEl = document.createElement('div')
+
+  forwardSkipEl.classList.add('custom-video-indicator', 'skip-indicator', 'forward')
+  forwardSkipEl.innerHTML = '+5 seconds'
+  backwardSkipEl.classList.add('custom-video-indicator', 'skip-indicator', 'backward')
+  backwardSkipEl.innerHTML = '-5 seconds'
+
+  videoElement.append(forwardSkipEl)
+  videoElement.append(backwardSkipEl)
+}
+
+const appendVolumeIndicator = () => {
+  if (!player.value) return
+  const videoElement = player.value.el()
+
+  if (!videoElement) return
+
+  const volumeEl = document.createElement('div')
+
+  volumeEl.classList.add('custom-video-indicator', 'volume-indicator')
+  volumeEl.innerHTML = '50%'
+
+  videoElement.append(volumeEl)
+}
+
+const appendChapterIndicator = () => {
+  if (!player.value) return
+  const videoElement = player.value.el()
+
+  if (!videoElement) return
+
+  const chapterEl = document.createElement('div')
+
+  chapterEl.classList.add('custom-video-indicator', 'chapter-indicator')
+  chapterEl.innerHTML = '<span>chapter</span>'
+
+  videoElement.append(chapterEl)
+}
+
+const appendPlaybackRateIndicator = () => {
+  if (!player.value) return
+  const videoElement = player.value.el()
+
+  if (!videoElement) return
+
+  const chapterEl = document.createElement('div')
+
+  chapterEl.classList.add('custom-video-indicator', 'playback-rate-indicator')
+  chapterEl.innerHTML = '<span>1x</span>'
+
+  videoElement.append(chapterEl)
+}
+
+const displayChapterIndicator = (chapterTitle: string) => {
+  if (!player.value) return
+  const videoElement = player.value?.el()
+
+  const targetElement = videoElement?.querySelector('.custom-video-indicator.chapter-indicator')
+  if (!targetElement) return
+
+  targetElement.innerHTML = `<span>${chapterTitle}</span>`
+
+  targetElement?.classList.add('show')
+  setTimeout(() => {
+    targetElement?.classList.remove('show')
+  }, 0.5 * 1000)
+}
+
+const displayPlaybackRateIndicator = (rate: number) => {
+  if (!player.value) return
+  const videoElement = player.value?.el()
+
+  const targetElement = videoElement?.querySelector(
+    '.custom-video-indicator.playback-rate-indicator'
+  )
+  if (!targetElement) return
+
+  targetElement.innerHTML = `<span>${rate}x</span>`
+
+  targetElement?.classList.add('show')
+  setTimeout(() => {
+    targetElement?.classList.remove('show')
+  }, 0.5 * 1000)
+}
+
+const displayVolumeIndicator = (volume?: number) => {
+  if (!player.value) return
+  const videoElement = player.value?.el()
+
+  const targetElement = videoElement?.querySelector('.custom-video-indicator.volume-indicator')
+  if (!targetElement) return
+
+  const newVolume = player.value.volume()
+  if (newVolume === undefined) return
+  let volumePercent = Math.round(newVolume * 100)
+  if (volume) {
+    volumePercent = Math.floor(volume)
+  }
+
+  targetElement.innerHTML = `<span>${volumePercent}%</span><span class="text">volume</span>`
+
+  targetElement?.classList.add('show')
+  setTimeout(() => {
+    targetElement?.classList.remove('show')
+  }, 0.5 * 1000)
+}
+
+const displaySkipIndicator = (skipTime: number) => {
+  if (!player.value) return
+  const videoElement = player.value?.el()
+
+  let targetElement: HTMLElement | null = null
+  let timeWithdirection: string = `${skipTime}`
+
+  if (skipTime > 0) {
+    targetElement = videoElement?.querySelector('.custom-video-indicator.skip-indicator.forward')
+    timeWithdirection = `+${skipTime}`
+  } else if (skipTime < 0) {
+    targetElement = videoElement?.querySelector('.custom-video-indicator.skip-indicator.backward')
+  }
+
+  if (!targetElement) return
+
+  targetElement.innerHTML = `${timeWithdirection} seconds`
+  targetElement?.classList.add('show')
+  setTimeout(() => {
+    targetElement?.classList.remove('show')
+  }, 0.5 * 1000)
+}
+
+const goToNextChapter = () => {
+  if (!player.value) return
+
+  const currentTime = player.value.currentTime()
+  if (currentTime === undefined) return
+
+  for (const chapter of chapterList.value) {
+    if (chapter.startTime > currentTime) {
+      player.value.currentTime(chapter.startTime)
+      displayChapterIndicator(chapter.title)
+      return
+    }
+  }
+}
+
+const goToPrevChapter = () => {
+  if (!player.value) return
+
+  const currentTime = player.value.currentTime()
+  if (currentTime === undefined) return
+
+  let prevChapter
+  for (const chapter of chapterList.value) {
+    if (chapter.startTime > currentTime) {
+      break
+    }
+    if (chapter.endTime <= currentTime) {
+      prevChapter = chapter
+    }
+  }
+
+  if (!prevChapter) return
+  player.value.currentTime(prevChapter.startTime)
+  displayChapterIndicator(prevChapter.title)
+}
+
+const changePlaybackRate = (direction: number) => {
+  if (!player.value) return
+  const currentRate = player.value.playbackRate()
+  if (!currentRate) return
+
+  if (direction < 0) {
+    if (currentRate <= 0.25) {
+      displayPlaybackRateIndicator(0.25)
+      return
+    }
+
+    const willChange = currentRate === 0.5 ? 0.25 : 0.5
+
+    player.value.playbackRate(currentRate - willChange)
+    displayPlaybackRateIndicator(currentRate - willChange)
+  } else if (direction > 0) {
+    if (currentRate >= 2) {
+      displayPlaybackRateIndicator(2)
+      return
+    }
+
+    const willChange = currentRate === 0.25 ? 0.25 : 0.5
+
+    player.value.playbackRate(currentRate + willChange)
+    displayPlaybackRateIndicator(currentRate + willChange)
+  }
+}
+
+const togglePause = () => {
+  if (player.value) {
+    player.value.paused() ? player.value.play() : player.value.pause()
+  }
+}
+
+const toggleFullScreen = () => {
+  if (player.value) {
+    player.value.isFullscreen() ? player.value.exitFullscreen() : player.value.requestFullscreen()
+  }
+}
+
+const toggleMute = () => {
+  if (!player.value) return
+  const volume = player.value.volume()
+
+  if (volume != undefined && volume <= 0) {
+    const newVolume = Number((0.1).toFixed(2))
+    player.value.volume(newVolume)
+    return
+  }
+
+  player.value.muted(!player.value.muted())
+}
+
+const changeVolume = (direction: number) => {
+  if (!player.value) return
+  let newVolume = player.value.volume()
+  if (newVolume === undefined) {
+    newVolume = 0
+  }
+  if (direction < 0) {
+    if (player.value.muted()) return
+    if (!(newVolume <= 0)) {
+      newVolume = Number((newVolume - 0.1).toFixed(2))
+    }
+  } else if (direction > 0) {
+    if (!(newVolume >= 1)) {
+      newVolume = Number((newVolume + 0.1).toFixed(2))
+    }
+    if (player.value.muted()) {
+      player.value.muted(false)
+      newVolume = Number((0.1).toFixed(2))
+    }
+  }
+  player.value.volume(newVolume)
+  displayVolumeIndicator()
+}
+
+const skip = (value: number) => {
+  if (!player.value) return
+  const currentTime = player.value.currentTime()
+
+  let skipTime
+  if (value < 0) {
+    skipTime = currentTime !== undefined ? currentTime + value : null
+
+    if (!skipTime || skipTime <= 0) {
+      player.value.currentTime(0)
+      displaySkipIndicator(value)
+      return
+    }
+
+    displaySkipIndicator(value)
+  } else if (value > 0) {
+    const duration = player.value.duration()
+    skipTime = currentTime !== undefined ? currentTime + value : null
+
+    if (!skipTime || !duration) return
+    if (duration < skipTime) {
+      player.value.currentTime(duration)
+      displaySkipIndicator(value)
+      return
+    }
+  }
+
+  if (!skipTime) return
+  displaySkipIndicator(value)
+  player.value.currentTime(skipTime)
+}
+
+let tappedOnVideoElement: ReturnType<typeof setTimeout> | null = null
+const handleTouch = (e: TouchEvent) => {
+  if (!player.value) return
+
+  if (!tappedOnVideoElement) {
+    tappedOnVideoElement = setTimeout(() => {
+      tappedOnVideoElement = null
+      player.value?.hasStarted_ || player.value?.play()
+    }, 300)
+  } else {
+    clearTimeout(tappedOnVideoElement)
+    tappedOnVideoElement = null
+
+    const videoElement = player.value.el()
+    if (!videoElement) return
+
+    const touch = e.touches[0]
+    const clickX = touch.clientX - videoElement.getBoundingClientRect().left
+    const middle = videoElement.clientWidth / 2
+
+    if (clickX < middle) {
+      skip(-10)
+    } else {
+      skip(10)
+    }
+  }
+}
+
+const handleKeydown = (e: KeyboardEvent) => {
+  switch (e.key) {
+    case 'N': // shift + n
+    case 'n': // shift + N
+      e.preventDefault()
+      if (e.shiftKey) {
+        emit('next-video')
+      }
+      break
+    case 'P': // shift + p
+    case 'p': //shift + P
+      e.preventDefault()
+      if (e.shiftKey) {
+        emit('prev-video')
+      }
+      break
+    case 'ArrowLeft':
+      e.preventDefault()
+      if (e.ctrlKey) {
+        goToPrevChapter()
+        break
+      }
+      skip(-5)
+      break
+    case 'ArrowRight':
+      e.preventDefault()
+      if (e.ctrlKey) {
+        goToNextChapter()
+        break
+      }
+      skip(5)
+      break
+    case 'ArrowUp':
+      e.preventDefault()
+      changeVolume(+1)
+      break
+    case 'ArrowDown':
+      e.preventDefault()
+      changeVolume(-1)
+      break
+    case ' ':
+      e.preventDefault()
+      togglePause()
+      break
+    case 'f':
+    case 'F':
+      e.preventDefault()
+      toggleFullScreen()
+      break
+    case 'm':
+    case 'M':
+      e.preventDefault()
+      toggleMute()
+      break
+    case 'j':
+    case 'J':
+      e.preventDefault()
+      skip(-10)
+      break
+    case 'k':
+    case 'K':
+      e.preventDefault()
+      togglePause()
+      break
+    case 'l':
+    case 'L':
+      e.preventDefault()
+      skip(+10)
+      break
+    case '>': // shift + .
+      e.preventDefault()
+      if (e.shiftKey) {
+        changePlaybackRate(1)
+      }
+      break
+    case '<': // shift + ,
+      e.preventDefault()
+      if (e.shiftKey) {
+        changePlaybackRate(-1)
+      }
+      break
+  }
 }
 
 const initPlayer = () => {
@@ -107,6 +523,18 @@ const initPlayer = () => {
 
     player.value?.on('loadedmetadata', () => {
       addMarkers()
+      appendSkipIndicator()
+      appendVolumeIndicator()
+      appendChapterIndicator()
+      appendPlaybackRateIndicator()
+      if (player.value) {
+        const playerEl = player.value.el() as HTMLElement
+        playerEl.addEventListener('touchstart', handleTouch, { passive: false })
+        playerEl.addEventListener('click', () => {
+          if (!player.value) return
+          player.value.hasStarted_ || player.value.play()
+        })
+      }
       nextTick(() => {
         updateChapterTimeTooltip()
       })
@@ -114,31 +542,10 @@ const initPlayer = () => {
   })
 }
 
-const updateChapterTimeTooltip = () => {
-  if (player.value) {
-    const timeTooltip = player.value
-      ?.getChild('controlBar')
-      ?.getChild('progressControl')
-      ?.getChild('seekBar')
-      ?.getChild('mouseTimeDisplay')
-      ?.getChild('timeTooltip') as TimeTooltip
-
-    if (!timeTooltip) return
-
-    timeTooltip.update = function (seekBarRect: DOMRect, seekBarPoint: number, time: string) {
-      const chapter = getChapterAtTime(time)
-      if (chapter) {
-        this.write(`${chapter.replace(/ /g, '\u00A0')}\n${time}`)
-        return
-      }
-      this.write(`${time}`)
-    }
-  }
-}
-
 // Initialize video.js when the component is mounted
 onMounted(() => {
   initPlayer()
+  document.addEventListener('keydown', handleKeydown)
 })
 
 // Watch for changes in the options prop
@@ -180,6 +587,7 @@ onBeforeUnmount(() => {
   if (player.value) {
     player.value.dispose()
   }
+  document.removeEventListener('keydown', handleKeydown)
 })
 </script>
 
