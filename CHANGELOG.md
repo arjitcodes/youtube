@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Resolve Cypress E2E crash and prevent premature PlaylistPanel rendering (#450)
+
 ### Added
 
 - Added Total playlist duration in the Playlist view and Playlist panel. (#435)
